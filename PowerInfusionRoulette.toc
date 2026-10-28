@@ -1,0 +1,9 @@
+## Interface: 120100, 120105
+## Title: Power Infusion Roulette
+## Notes: Group signups and an animated roulette for your next Power Infusion target.
+## Author: PowerInfusionRoulette
+## Version: 12.1.5
+## SavedVariables: PowerInfusionRouletteDB
+
+Core.lua
+UI.lua
