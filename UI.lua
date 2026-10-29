@@ -9,6 +9,23 @@ local backdrop = {
     edgeSize = 1
 }
 
+StaticPopupDialogs.POWERINFUSIONROULETTE_ENABLE_MACRO = {
+    text = "Enable Update PI Macro?\n\nA character-specific Power Infusion macro will be created and updated with the winner every time the roulette finishes. Drag it from your character's Macros tab to your action bar.\n\nMacro changes during combat wait until combat ends. Disabling this option leaves the macro in place.",
+    button1 = "Enable",
+    button2 = CANCEL,
+    OnAccept = function()
+        PowerInfusionRouletteDB.piMacroExplained = true
+        Roulette:SetUpdatePIMacro(true)
+    end,
+    OnCancel = function()
+        Roulette:Notify()
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3
+}
+
 local function label(parent, text, font, point, relative, relativePoint, x, y)
     local region = parent:CreateFontString(nil, "OVERLAY", font or "GameFontNormal")
     region:SetPoint(point, relative, relativePoint, x, y)
@@ -86,6 +103,7 @@ function Roulette:Render()
     local count = #self.entries
     window.allowHealers:SetChecked(PowerInfusionRouletteDB.allowHealers == true)
     window.allowTanks:SetChecked(PowerInfusionRouletteDB.allowTanks == true)
+    window.updatePIMacro:SetChecked(PowerInfusionRouletteDB.updatePIMacro == true)
     window.count:SetText("PLAYERS  /  " .. count)
     if signingUp then
         window.status:SetText("SIGNUPS OPEN")
@@ -327,6 +345,21 @@ function Roulette:CreateWindow()
         tooltip(checkbox, "Uses assigned group roles. Changes apply to the next round.")
         window[option] = checkbox
     end
+    window.updatePIMacro = CreateFrame("CheckButton", nil, window, "UICheckButtonTemplate")
+    window.updatePIMacro:SetSize(24, 24)
+    window.updatePIMacro:SetPoint("BOTTOMLEFT", 360, 62)
+    label(window.updatePIMacro, "Update PI Macro", "GameFontHighlightSmall", "LEFT", window.updatePIMacro, "RIGHT", 2, 0)
+    window.updatePIMacro:SetScript("OnClick", function(self)
+        local enabled = self:GetChecked() == true
+        if enabled and not PowerInfusionRouletteDB.piMacroExplained then
+            Roulette:Notify()
+            StaticPopup_Show("POWERINFUSIONROULETTE_ENABLE_MACRO")
+        else
+            Roulette:SetUpdatePIMacro(enabled)
+        end
+    end)
+    tooltip(window.updatePIMacro,
+        "Update a character-specific Power Infusion macro with each winner. Combat changes wait until combat ends.")
     window.cancel = button(window, "Cancel round", 120, function()
         Roulette:Cancel()
     end)

@@ -1,6 +1,41 @@
 local now, priest, knowsPI, grouped, raid, instance = 0, true, true, true, false, false
 local chatRestricted, outgoingRestricted = false, false
 local roles = {}
+local combat, characterMacros, accountMacro = false, {}, nil
+MAX_ACCOUNT_MACROS, MAX_CHARACTER_MACROS = 120, 30
+C_Spell = {
+    GetSpellName = function()
+        return "Power Infusion"
+    end,
+    GetSpellTexture = function()
+        return 135939
+    end
+}
+function InCombatLockdown()
+    return combat
+end
+function GetNumMacros()
+    return accountMacro and 1 or 0, #characterMacros
+end
+function GetMacroInfo(index)
+    local macro = index > MAX_ACCOUNT_MACROS and characterMacros[index - MAX_ACCOUNT_MACROS] or accountMacro
+    if macro then
+        return macro.name, 135939, macro.body
+    end
+end
+function CreateMacro(name, icon, body, perCharacter)
+    assert(not combat and perCharacter and #characterMacros < MAX_CHARACTER_MACROS)
+    characterMacros[#characterMacros + 1] = {
+        name = name,
+        body = body
+    }
+    return MAX_ACCOUNT_MACROS + #characterMacros
+end
+function EditMacro(index, name, icon, body)
+    assert(not combat and index > MAX_ACCOUNT_MACROS)
+    characterMacros[index - MAX_ACCOUNT_MACROS].body = body
+    return index
+end
 local messages, printed, frames = {}, {}, {}
 local units = {
     player = {"Host", "Realm", "Player-1"},
@@ -91,6 +126,11 @@ local function test(name, check)
     PowerInfusionRouletteDB.timeout = 30
     PowerInfusionRouletteDB.allowHealers = false
     PowerInfusionRouletteDB.allowTanks = false
+    PowerInfusionRouletteDB.updatePIMacro = false
+    PowerInfusionRouletteDB.piMacroExplained = nil
+    PowerInfusionRouletteCharDB = {}
+    combat, characterMacros, accountMacro = false, {}, nil
+    roulette.pendingMacroBody = nil
     roles = {}
     check()
     passed = passed + 1
@@ -99,6 +139,99 @@ end
 local function enter(name, message, event)
     roulette:Receive(event or "CHAT_MSG_PARTY", message or "big", name)
 end
+
+test("PI macro defaults off and settings and macro name survive login", function()
+    PowerInfusionRouletteDB.updatePIMacro = nil
+    frames[1].scripts.OnEvent(frames[1], "PLAYER_LOGIN")
+    assert(PowerInfusionRouletteDB.updatePIMacro == false)
+    roulette:SetUpdatePIMacro(true)
+    PowerInfusionRouletteDB.piMacroExplained = true
+    local name = PowerInfusionRouletteCharDB.macroName
+    frames[1].scripts.OnEvent(frames[1], "PLAYER_LOGIN")
+    assert(PowerInfusionRouletteDB.updatePIMacro and PowerInfusionRouletteDB.piMacroExplained)
+    assert(PowerInfusionRouletteCharDB.macroName == name and #characterMacros == 1)
+end)
+test("PI macro creates on enable and updates only for a finalized winner", function()
+    roulette:SetUpdatePIMacro(true)
+    assert(characterMacros[1].body == "#showtooltip\n/cast Power Infusion")
+    roulette:Begin()
+    enter("Bob-OtherRealm")
+    roulette:StartSpin()
+    assert(characterMacros[1].body == "#showtooltip\n/cast Power Infusion")
+    now = 6
+    roulette:Tick()
+    assert(#characterMacros == 1)
+    assert(characterMacros[1].body == "#showtooltip\n/cast [@Bob-OtherRealm] Power Infusion")
+    roulette:Begin()
+    enter("Alice")
+    roulette:StartSpin()
+    now = 12
+    roulette:Tick()
+    assert(#characterMacros == 1 and characterMacros[1].body == "#showtooltip\n/cast [@Alice-Realm] Power Infusion")
+end)
+test("PI macro lookup survives shifted slots and recreates a missing macro", function()
+    characterMacros[1] = {
+        name = "Other",
+        body = "unchanged"
+    }
+    roulette:SetUpdatePIMacro(true)
+    local name = PowerInfusionRouletteCharDB.macroName
+    table.remove(characterMacros, 1)
+    roulette:UpdatePIMacro("Alice-Realm")
+    assert(#characterMacros == 1 and characterMacros[1].name == name)
+    characterMacros = {}
+    roulette:UpdatePIMacro("Bob-OtherRealm")
+    assert(#characterMacros == 1 and characterMacros[1].name == name)
+    assert(characterMacros[1].body == "#showtooltip\n/cast [@Bob-OtherRealm] Power Infusion")
+end)
+test("PI macro avoids existing names and account macros", function()
+    accountMacro = {
+        name = "PI Roulette",
+        body = "account unchanged"
+    }
+    characterMacros[1] = {
+        name = "PI Roulette",
+        body = "character unchanged"
+    }
+    roulette:SetUpdatePIMacro(true)
+    assert(PowerInfusionRouletteCharDB.macroName == "PI Roulette 2")
+    assert(characterMacros[1].body == "character unchanged" and accountMacro.body == "account unchanged")
+    assert(#characterMacros == 2)
+end)
+test("PI macro defers combat writes and disabling cancels pending updates", function()
+    combat = true
+    roulette:SetUpdatePIMacro(true)
+    roulette:UpdatePIMacro("Alice-Realm")
+    assert(#characterMacros == 0)
+    combat = false
+    frames[1].scripts.OnEvent(frames[1], "PLAYER_REGEN_ENABLED")
+    assert(characterMacros[1].body == "#showtooltip\n/cast [@Alice-Realm] Power Infusion")
+    combat = true
+    roulette:UpdatePIMacro("Bob-OtherRealm")
+    roulette:SetUpdatePIMacro(false)
+    combat = false
+    frames[1].scripts.OnEvent(frames[1], "PLAYER_REGEN_ENABLED")
+    assert(characterMacros[1].body == "#showtooltip\n/cast [@Alice-Realm] Power Infusion")
+end)
+test("PI macro reports full character slots without replacing other macros", function()
+    for index = 1, MAX_CHARACTER_MACROS do
+        characterMacros[index] = {
+            name = "Other " .. index,
+            body = "unchanged"
+        }
+    end
+    roulette:SetUpdatePIMacro(true)
+    assert(#characterMacros == MAX_CHARACTER_MACROS)
+    assert(printed[#printed]:find("Free a character-specific macro slot", 1, true))
+end)
+test("disabled PI macro leaves completed rounds untouched", function()
+    roulette:Begin()
+    enter("Alice")
+    roulette:StartSpin()
+    now = 6
+    roulette:Tick()
+    assert(#characterMacros == 0)
+end)
 
 test("role settings default off and saved preferences survive login", function()
     PowerInfusionRouletteDB.allowHealers = nil
@@ -478,11 +611,8 @@ test("native UI lifecycle, exclusion click, and final wheel landing", function()
     UIParent = mockRegion()
     UIParent:SetSize(1600, 900)
     UISpecialFrames = {}
-    C_Spell = {
-        GetSpellTexture = function()
-            return 135939
-        end
-    }
+    StaticPopupDialogs = {}
+    CANCEL = "Cancel"
     GameTooltip = mockRegion()
     GameTooltip.SetOwner = function()
     end
@@ -549,6 +679,37 @@ test("native UI lifecycle, exclusion click, and final wheel landing", function()
     assert(window.current.text == "Bob\nOtherRealm")
     assert(math.abs(window.pointer.point[4]) < 0.00001)
     assert(math.abs(window.pointer.point[5] - 182) < 0.00001)
+end)
+
+test("PI macro checkbox confirms first enable and remembers acceptance", function()
+    local shown = 0
+    StaticPopup_Show = function(key)
+        assert(key == "POWERINFUSIONROULETTE_ENABLE_MACRO")
+        shown = shown + 1
+    end
+    roulette:Render()
+    local checkbox = roulette.window.updatePIMacro
+    local dialog = StaticPopupDialogs.POWERINFUSIONROULETTE_ENABLE_MACRO
+    assert(not checkbox:GetChecked())
+    checkbox:SetChecked(true)
+    checkbox.scripts.OnClick(checkbox)
+    assert(shown == 1 and not checkbox:GetChecked() and #characterMacros == 0)
+    dialog.OnCancel()
+    assert(not PowerInfusionRouletteDB.updatePIMacro and not PowerInfusionRouletteDB.piMacroExplained)
+    checkbox:SetChecked(true)
+    checkbox.scripts.OnClick(checkbox)
+    dialog.OnAccept()
+    assert(shown == 2 and checkbox:GetChecked() and #characterMacros == 1)
+    assert(PowerInfusionRouletteDB.updatePIMacro and PowerInfusionRouletteDB.piMacroExplained)
+    checkbox:SetChecked(false)
+    checkbox.scripts.OnClick(checkbox)
+    assert(not PowerInfusionRouletteDB.updatePIMacro and #characterMacros == 1)
+    checkbox:SetChecked(true)
+    checkbox.scripts.OnClick(checkbox)
+    assert(shown == 2 and PowerInfusionRouletteDB.updatePIMacro and #characterMacros == 1)
+    checkbox.scripts.OnEnter(checkbox)
+    assert(GameTooltip.text:find("character-specific", 1, true))
+    checkbox.scripts.OnLeave(checkbox)
 end)
 
 test("40-player wheel lands on every possible winner and shrinks cleanly", function()

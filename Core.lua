@@ -138,6 +138,59 @@ function Roulette:SetTimeout(value)
     return true
 end
 
+function Roulette:SetUpdatePIMacro(enabled)
+    PowerInfusionRouletteDB.updatePIMacro = enabled == true
+    if enabled then
+        self:UpdatePIMacro(self.state == "finished" and self.winner and self.winner.name or nil)
+    else
+        self.pendingMacroBody = nil
+    end
+    self:Notify()
+end
+
+function Roulette:UpdatePIMacro(winnerName)
+    if not PowerInfusionRouletteDB.updatePIMacro then
+        return
+    end
+    self.pendingMacroBody = "#showtooltip\n/cast " .. (winnerName and ("[@" .. winnerName .. "] ") or "") ..
+                                (C_Spell.GetSpellName(POWER_INFUSION) or "Power Infusion")
+    self:ApplyPendingPIMacro()
+end
+
+function Roulette:ApplyPendingPIMacro()
+    if not self.pendingMacroBody or not PowerInfusionRouletteDB.updatePIMacro or InCombatLockdown() then
+        return
+    end
+    local _, characterCount = GetNumMacros()
+    local names = {}
+    local macroIndex
+    for index = MAX_ACCOUNT_MACROS + 1, MAX_ACCOUNT_MACROS + characterCount do
+        local name = GetMacroInfo(index)
+        names[name] = true
+        if name == PowerInfusionRouletteCharDB.macroName then
+            macroIndex = index
+        end
+    end
+    if not PowerInfusionRouletteCharDB.macroName then
+        local name, suffix = "PI Roulette", 1
+        while names[name] do
+            suffix = suffix + 1
+            name = "PI Roulette " .. suffix
+        end
+        PowerInfusionRouletteCharDB.macroName = name
+    end
+    if macroIndex then
+        EditMacro(macroIndex, nil, nil, self.pendingMacroBody)
+    elseif characterCount < MAX_CHARACTER_MACROS then
+        macroIndex = CreateMacro(PowerInfusionRouletteCharDB.macroName,
+            C_Spell.GetSpellTexture(POWER_INFUSION) or 135939, self.pendingMacroBody, true)
+    end
+    if not macroIndex or macroIndex == 0 then
+        self:Print("Could not create the PI macro. Free a character-specific macro slot, then re-enable Update PI Macro.")
+    end
+    self.pendingMacroBody = nil
+end
+
 function Roulette:Begin()
     if self.state == "signup" or self.state == "spinning" then
         self:Print("A round is already running.")
@@ -325,6 +378,7 @@ function Roulette:Tick()
         self.state = "finished"
         self:Announce(self.winner.name .. " won this round!")
         self:Print(self.winner.name .. " won this round!")
+        self:UpdatePIMacro(self.winner.name)
         self:Notify()
     end
 end
@@ -361,6 +415,10 @@ events:SetScript("OnEvent", function(_, event, ...)
         PowerInfusionRouletteDB.timeout = math.floor(timeout)
         PowerInfusionRouletteDB.allowHealers = PowerInfusionRouletteDB.allowHealers == true
         PowerInfusionRouletteDB.allowTanks = PowerInfusionRouletteDB.allowTanks == true
+        PowerInfusionRouletteDB.updatePIMacro = PowerInfusionRouletteDB.updatePIMacro == true
+        if type(PowerInfusionRouletteCharDB) ~= "table" then
+            PowerInfusionRouletteCharDB = {}
+        end
         SLASH_POWERINFUSIONROULETTE1 = "/pir"
         SLASH_POWERINFUSIONROULETTE2 = "/powerinfusion"
         SlashCmdList.POWERINFUSIONROULETTE = function(text)
@@ -372,9 +430,12 @@ events:SetScript("OnEvent", function(_, event, ...)
         events:RegisterEvent("GROUP_ROSTER_UPDATE")
         events:RegisterEvent("PLAYER_ROLES_ASSIGNED")
         events:RegisterEvent("ROLE_CHANGED_INFORM")
+        events:RegisterEvent("PLAYER_REGEN_ENABLED")
         if Roulette.CreateWindow then
             Roulette:CreateWindow()
         end
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        Roulette:ApplyPendingPIMacro()
     elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ROLES_ASSIGNED" or event == "ROLE_CHANGED_INFORM" then
         Roulette:RefreshRoster()
     else

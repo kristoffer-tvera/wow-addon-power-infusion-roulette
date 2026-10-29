@@ -27,7 +27,16 @@ The window also has a signup-duration field; press Enter or click Apply to save 
 
 **Allow healers to enter** and **Allow tanks to enter** are independent checkboxes above the duration settings. Both default to off and are saved between sessions. Changes apply to the next round. Eligibility uses WoW's assigned group role, not class: DPS are always eligible, healers and tanks require their respective option, and players without an assigned role cannot enter. Assign group roles before opening signups.
 
-Exclusions reset each round. Players who leave or change to an ineligible role during signup are removed; roles are checked again before the draw. Leaving or switching group chat type cancels the round. If the selected winner leaves or becomes ineligible during the animation, the round is cancelled instead of declaring them the winner. Reloading the UI discards the active round but preserves the timeout and role settings.
+**Update PI Macro**, beside the role options, defaults to off and is saved between sessions. The first enable asks for confirmation, then creates a character-specific macro (normally named **PI Roulette**). Drag it from the character-specific Macros tab onto your action bar. Each completed round updates it with the winner's realm-qualified name:
+
+```text
+#showtooltip
+/cast [@winnerName-Realm] Power Infusion
+```
+
+Before a winner is available, the macro is a normal untargeted Power Infusion cast. The spell name uses your client's language. Macro changes wait until combat ends. The macro's name is saved per character rather than its shifting slot ID; if it is deleted or renamed, the addon recreates it under the saved name on the next update. Existing macros are not adopted when first enabling, and account-wide macros are never changed. If character macro slots are full, free a slot and toggle the option off/on, or finish another round. Disabling leaves the macro and its last target intact. Casting still requires pressing the macro yourself.
+
+Exclusions reset each round. Players who leave or change to an ineligible role during signup are removed; roles are checked again before the draw. Leaving or switching group chat type cancels the round. If the selected winner leaves or becomes ineligible during the animation, the round is cancelled instead of declaring them the winner. Reloading the UI discards the active round but preserves all options and the per-character macro name.
 
 ## Verification
 

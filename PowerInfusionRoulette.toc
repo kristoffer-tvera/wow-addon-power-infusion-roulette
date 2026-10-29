@@ -4,6 +4,7 @@
 ## Author: PowerInfusionRoulette
 ## Version: 12.1.5
 ## SavedVariables: PowerInfusionRouletteDB
+## SavedVariablesPerCharacter: PowerInfusionRouletteCharDB
 
 Core.lua
 UI.lua
