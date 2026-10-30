@@ -2,7 +2,7 @@ local now, priest, knowsPI, grouped, raid, instance = 0, true, true, true, false
 local chatRestricted, outgoingRestricted = false, false
 local roles = {}
 local combat, characterMacros, accountMacro = false, {}, nil
-MAX_ACCOUNT_MACROS, MAX_CHARACTER_MACROS = 120, 30
+local maxCharacterMacros = 30
 C_Spell = {
     GetSpellName = function()
         return "Power Infusion"
@@ -18,22 +18,27 @@ function GetNumMacros()
     return accountMacro and 1 or 0, #characterMacros
 end
 function GetMacroInfo(index)
-    local macro = index > MAX_ACCOUNT_MACROS and characterMacros[index - MAX_ACCOUNT_MACROS] or accountMacro
+    local accountCount = accountMacro and 1 or 0
+    local macro = index > accountCount and characterMacros[index - accountCount] or accountMacro
     if macro then
         return macro.name, 135939, macro.body
     end
 end
 function CreateMacro(name, icon, body, perCharacter)
-    assert(not combat and perCharacter and #characterMacros < MAX_CHARACTER_MACROS)
+    assert(not combat and perCharacter)
+    if #characterMacros >= maxCharacterMacros then
+        return 0
+    end
     characterMacros[#characterMacros + 1] = {
         name = name,
         body = body
     }
-    return MAX_ACCOUNT_MACROS + #characterMacros
+    return (accountMacro and 1 or 0) + #characterMacros
 end
 function EditMacro(index, name, icon, body)
-    assert(not combat and index > MAX_ACCOUNT_MACROS)
-    characterMacros[index - MAX_ACCOUNT_MACROS].body = body
+    local accountCount = accountMacro and 1 or 0
+    assert(not combat and index > accountCount)
+    characterMacros[index - accountCount].body = body
     return index
 end
 local messages, printed, frames = {}, {}, {}
@@ -214,14 +219,14 @@ test("PI macro defers combat writes and disabling cancels pending updates", func
     assert(characterMacros[1].body == "#showtooltip\n/cast [@Alice-Realm] Power Infusion")
 end)
 test("PI macro reports full character slots without replacing other macros", function()
-    for index = 1, MAX_CHARACTER_MACROS do
+    for index = 1, maxCharacterMacros do
         characterMacros[index] = {
             name = "Other " .. index,
             body = "unchanged"
         }
     end
     roulette:SetUpdatePIMacro(true)
-    assert(#characterMacros == MAX_CHARACTER_MACROS)
+    assert(#characterMacros == maxCharacterMacros)
     assert(printed[#printed]:find("Free a character-specific macro slot", 1, true))
 end)
 test("disabled PI macro leaves completed rounds untouched", function()

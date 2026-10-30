@@ -161,10 +161,10 @@ function Roulette:ApplyPendingPIMacro()
     if not self.pendingMacroBody or not PowerInfusionRouletteDB.updatePIMacro or InCombatLockdown() then
         return
     end
-    local _, characterCount = GetNumMacros()
+    local accountCount, characterCount = GetNumMacros()
     local names = {}
     local macroIndex
-    for index = MAX_ACCOUNT_MACROS + 1, MAX_ACCOUNT_MACROS + characterCount do
+    for index = accountCount + 1, accountCount + characterCount do
         local name = GetMacroInfo(index)
         names[name] = true
         if name == PowerInfusionRouletteCharDB.macroName then
@@ -181,12 +181,13 @@ function Roulette:ApplyPendingPIMacro()
     end
     if macroIndex then
         EditMacro(macroIndex, nil, nil, self.pendingMacroBody)
-    elseif characterCount < MAX_CHARACTER_MACROS then
+    else
         macroIndex = CreateMacro(PowerInfusionRouletteCharDB.macroName,
             C_Spell.GetSpellTexture(POWER_INFUSION) or 135939, self.pendingMacroBody, true)
     end
     if not macroIndex or macroIndex == 0 then
-        self:Print("Could not create the PI macro. Free a character-specific macro slot, then re-enable Update PI Macro.")
+        self:Print(
+            "Could not create the PI macro. Free a character-specific macro slot, then re-enable Update PI Macro.")
     end
     self.pendingMacroBody = nil
 end
